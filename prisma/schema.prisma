@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USUÁRIOS
+// ============================================================
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String
+  password_hash    String?
+  crm              String?   // CRM do médico (não obrigatório no cadastro)
+  especialidade    String    @default("retina_vitreo")
+  estado           String?   // UF para ranking regional
+  role             String    @default("user") // 'user'|'admin'
+  plano            String    @default("free") // free|pro_mensal|pro_anual|alumni
+  plano_status     String    @default("active") // active|past_due|canceled|trialing
+  plano_expira     DateTime?
+  pagarme_customer_id String? // ID do cliente no Pagar.me
+
+  // LGPD obrigatório
+  deleted_at       DateTime? // soft delete — nunca hard delete
+  lgpd_consent_at  DateTime? // timestamp do consentimento explícito
+  lgpd_consent_ip  String?   // IP no momento do consentimento
+
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  // Relações
+  respostas        UserAnswer[]
+  simulados        SimuladoSession[]
+  access_logs      AccessLog[]
+  notif_preferences NotifPreference?
+
+  @@map("users")
+  @@index([email])
+  @@index([plano, plano_status])
+}
+
+// ============================================================
+// BANCO DE QUESTÕES
+// ============================================================
+model Question {
+  id               String   @id @default(cuid())
+
+  // Conteúdo clínico (revisado pelo fundador antes de publicar)
+  enunciado        String   @db.Text
+  alternativa_a    String   @db.Text
+  alternativa_b    String   @db.Text
+  alternativa_c    String   @db.Text
+  alternativa_d    String   @db.Text
+  alternativa_e    String   @db.Text
+  gabarito         String   // A|B|C|D|E
+
+  // Classificação
+  tema             String   // Tema de constants.ts TEMAS
+  subtema          String
+  dificuldade      Int      @default(2) // 1=fácil | 2=médio | 3=difícil
+  dificuldade_real Float?   // Taxa de erro calculada após 30+ respostas
+
+  // Referência científica (obrigatória — ver REFERENCIAS_APROVADAS em constants.ts)
+  referencia_id    String?  // id de REFERENCIAS_APROVADAS
+  referencia_texto String?  // texto completo da referência
+
+  // Imagem clínica (OCT, AF, retinografia, OCTA)
+  imagem_url       String?  // URL S3/CloudFront
+  imagem_tipo      String?  // 'oct'|'af'|'retinografia'|'octa'|'icg'|'eco'
+  imagem_legenda   String?
+
+  // Metadados de origem
+  fonte            String   @default("original") // 'original'|'adaptada_prova'|'gerada_ia'
+  ano_origem       Int?     // Se adaptada de prova SBRV, qual ano
+  revisado         Boolean  @default(false) // Revisão clínica do fundador
+  status           String   @default("rascunho") // 'rascunho'|'ativo'|'aposentado'|'em_revisao'
+  // 'aposentado': questão desatualizada clinicamente. Mantida para histórico.
+
+  // Cache de IA (gerado uma vez, reutilizado sempre)
+  comentario_ia    String?  @db.Text
+  fallback_comment String?  @db.Text // Para quando API Anthropic estiver indisponível
+  comentario_gerado_em DateTime?
+
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  respostas        UserAnswer[]
+  simulado_itens   SimuladoItem[]
+
+  @@map("questions")
+  @@index([tema, status])
+  @@index([dificuldade, status])
+  @@index([revisado, status])
+}
+
+// ============================================================
+// RESPOSTAS DOS USUÁRIOS
+// ============================================================
+model UserAnswer {
+  id             String   @id @default(cuid())
+  user_id        String
+  question_id    String
+  resposta       String   // A|B|C|D|E
+  correta        Boolean
+  tempo_ms       Int      // Tempo em milissegundos
+  valida         Boolean  @default(true)
+  // RAZÃO: valida=false quando tempo_ms < 3000 (clique acidental ou bot).
+  // Respostas inválidas não contam para desempenho nem ranking.
+  simulado_id    String?  // null = questão avulsa
+  modo           String   @default("avulso") // 'avulso'|'simulado'|'revisao'
+  created_at     DateTime @default(now())
+
+  user           User     @relation(fields: [user_id], references: [id])
+  question       Question @relation(fields: [question_id], references: [id])
+
+  @@map("user_answers")
+  @@index([user_id, question_id])
+  @@index([user_id, created_at])
+  @@index([question_id, correta])
+}
+
+// ============================================================
+// SIMULADOS
+// ============================================================
+model SimuladoSession {
+  id           String   @id @default(cuid())
+  user_id      String
+  tipo         String   // 'pontos_fracos'|'por_tema'|'prova_completa'
+  temas        String[] // Temas incluídos no simulado
+  status       String   @default("em_andamento") // 'em_andamento'|'concluido'|'abandonado'
+  modo_prova   Boolean  @default(false)
+  // RAZÃO: modo_prova=true = sem feedback durante o simulado (replica condições reais da prova SBRV)
+
+  iniciado_em  DateTime @default(now())
+  concluido_em DateTime?
+  tempo_total_segundos Int? // Calculado no momento da conclusão
+
+  seed         String   // userId+data — para reprodutibilidade no debug
+  // RAZÃO: Seed permite recriar exatamente o mesmo simulado para debugging.
+
+  user         User     @relation(fields: [user_id], references: [id])
+  itens        SimuladoItem[]
+
+  @@map("simulado_sessions")
+  @@index([user_id, status])
+}
+
+model SimuladoItem {
+  id           String @id @default(cuid())
+  simulado_id  String
+  question_id  String
+  ordem        Int    // Ordem de apresentação no simulado
+
+  simulado     SimuladoSession @relation(fields: [simulado_id], references: [id])
+  question     Question        @relation(fields: [question_id], references: [id])
+
+  @@map("simulado_items")
+  @@unique([simulado_id, ordem])
+}
+
+// ============================================================
+// LOGS DE ACESSO (LGPD)
+// ============================================================
+model AccessLog {
+  id         String   @id @default(cuid())
+  user_id    String
+  acao       String   // 'login'|'view_answers'|'export_data'|'delete_account'
+  ip         String?
+  user_agent String?
+  created_at DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id])
+
+  @@map("access_logs")
+  @@index([user_id, created_at])
+  // RAZÃO LGPD: Registra quem acessa dados de usuário para fins de auditoria.
+}
+
+// ============================================================
+// PREFERÊNCIAS DE NOTIFICAÇÃO
+// ============================================================
+model NotifPreference {
+  id                 String @id @default(cuid())
+  user_id            String @unique
+  lembrete_estudo    Boolean @default(true)
+  horario_lembrete   String  @default("20:00") // HH:MM
+  // RAZÃO: 20h é horário de maior engajamento em plataformas de estudo médico.
+  notif_push_enabled Boolean @default(false)
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("notif_preferences")
+}

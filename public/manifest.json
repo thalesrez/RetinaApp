@@ -1,0 +1,17 @@
+{
+  "name": "RetinaApp — Preparatório SBRV",
+  "short_name": "RetinaApp",
+  "description": "Banco de questões para a prova de título da SBRV",
+  "start_url": "/banco",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0ea5e9",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "screenshots": [
+    { "src": "/screenshots/mobile.png", "sizes": "390x844", "form_factor": "narrow" }
+  ]
+}
