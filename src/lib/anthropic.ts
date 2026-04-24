@@ -25,7 +25,12 @@ export function buildSystemPrompt(
 // Ping leve para health check (não gera tokens)
 export async function pingAnthropic(): Promise<'ok' | 'error'> {
   try {
-    await anthropic.models.list()
+    // Usa countTokens como ping leve — não consome créditos
+    // @ts-expect-error — countTokens disponível no runtime do SDK instalado
+    await anthropic.messages.countTokens({
+      model: AI.MODEL,
+      messages: [{ role: 'user', content: 'ping' }],
+    })
     return 'ok'
   } catch {
     return 'error'
