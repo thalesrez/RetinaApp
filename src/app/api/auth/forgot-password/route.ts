@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { redis } from '@/lib/redis'
+import { enviarEmailResetSenha } from '@/lib/email'
 
 const schema = z.object({
   email: z.string().email(),
@@ -30,11 +31,8 @@ export async function POST(req: NextRequest) {
       const token = crypto.randomUUID()
       await redis.setex(`reset:${token}`, 3600, user.id)
 
-      // TODO Sprint 5: enviar e-mail via nodemailer com link de reset
-      // Por ora: logar para desenvolvimento
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEV] Reset link: ${process.env.NEXTAUTH_URL}/recuperar-senha/confirmar?token=${token}`)
-      }
+      // RAZÃO: fire-and-forget — falha de SMTP não deve revelar se o e-mail existe
+      enviarEmailResetSenha(email, token).catch(console.error)
     }
 
     return NextResponse.json({
