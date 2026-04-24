@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Send, Bot, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ const MENSAGEM_INICIAL: Mensagem = {
   content: 'Olá! Sou seu tutor especialista em retina e vítreo. Posso explicar conceitos, discutir questões ou aprofundar qualquer tema da prova de título. Como posso ajudar?',
 }
 
-export default function TutorPage() {
+function TutorInner() {
   const searchParams = useSearchParams()
   const questaoId = searchParams.get('questaoId') ?? undefined
 
@@ -193,6 +193,14 @@ export default function TutorPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function TutorPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-500">Carregando…</div>}>
+      <TutorInner />
+    </Suspense>
   )
 }
 

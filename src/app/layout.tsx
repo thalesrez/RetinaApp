@@ -1,4 +1,7 @@
 import type { Metadata, Viewport } from 'next'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { Providers } from '@/components/shared/Providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -19,20 +22,19 @@ export const viewport: Viewport = {
   themeColor: '#0ea5e9',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const session = await getServerSession(authOptions)
+
   return (
     <html lang="pt-BR" className="dark">
       <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
-        {children}
-        <footer className="hidden">
-          {/* Rodapé de compliance médico — visível nos layouts internos */}
-          Este conteúdo é exclusivamente educacional e destina-se à preparação
-          para a prova de título de especialista. Não substitui avaliação clínica médica presencial.
-        </footer>
+        <Providers session={session}>
+          {children}
+        </Providers>
       </body>
     </html>
   )
